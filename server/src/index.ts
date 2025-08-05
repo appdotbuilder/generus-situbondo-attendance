@@ -6,6 +6,9 @@ import cors from 'cors';
 import superjson from 'superjson';
 import { z } from 'zod';
 
+// Import seed function
+import { seedUsers } from './handlers/seed';
+
 // Import schemas
 import { 
   loginInputSchema, 
@@ -165,6 +168,10 @@ export type AppRouter = typeof appRouter;
 
 async function start() {
   const port = process.env['SERVER_PORT'] || 2022;
+  
+  // Seed default users on startup
+  await seedUsers();
+  
   const server = createHTTPServer({
     middleware: (req, res, next) => {
       cors()(req, res, next);
