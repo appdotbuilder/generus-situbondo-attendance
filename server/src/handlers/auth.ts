@@ -1,50 +1,66 @@
 
+import { db } from '../db';
+import { usersTable } from '../db/schema';
 import { type LoginInput, type User } from '../schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function login(input: LoginInput): Promise<User | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to authenticate users based on role and credentials.
-    // For guru: username (guru0001-guru0050) and password (guru1234567890)
-    // For koordinator: username (Ahmad Faqih Fajrin, Koordinator 1-10) and password (Ahfin2615039798, koord1234567890)
-    
-    // Placeholder validation logic
-    if (input.role === 'guru') {
-        const isValidGuru = /^guru\d{4}$/.test(input.username) && input.password === 'guru1234567890';
-        if (isValidGuru) {
-            return {
-                id: 1,
-                username: input.username,
-                password: '', // Don't return password
-                role: 'guru',
-                full_name: `Guru ${input.username.replace('guru', '')}`,
-                is_active: true,
-                created_at: new Date(),
-                updated_at: new Date()
-            };
-        }
-    } else if (input.role === 'koordinator') {
-        const validKoordinatorNames = ['Ahmad Faqih Fajrin', 'Koordinator 1', 'Koordinator 2', 'Koordinator 3', 'Koordinator 4', 'Koordinator 5', 'Koordinator 6', 'Koordinator 7', 'Koordinator 8', 'Koordinator 9', 'Koordinator 10'];
-        const validPasswords = ['Ahfin2615039798', 'koord1234567890'];
-        
-        if (validKoordinatorNames.includes(input.username) && validPasswords.includes(input.password)) {
-            return {
-                id: 2,
-                username: input.username,
-                password: '', // Don't return password
-                role: 'koordinator',
-                full_name: input.username,
-                is_active: true,
-                created_at: new Date(),
-                updated_at: new Date()
-            };
-        }
+  try {
+    // Query user by username and role
+    const users = await db.select()
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.username, input.username),
+        eq(usersTable.role, input.role),
+        eq(usersTable.is_active, true)
+      ))
+      .execute();
+
+    if (users.length === 0) {
+      return null;
     }
-    
-    return null;
+
+    const user = users[0];
+
+    // Verify password (in production, this would use proper password hashing)
+    if (user.password !== input.password) {
+      return null;
+    }
+
+    // Return user without password
+    return {
+      ...user,
+      password: '' // Don't return password in response
+    };
+  } catch (error) {
+    console.error('Login failed:', error);
+    throw error;
+  }
 }
 
 export async function getCurrentUser(userId: number): Promise<User | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to get current user information by ID.
-    return null;
+  try {
+    const users = await db.select()
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.id, userId),
+        eq(usersTable.is_active, true)
+      ))
+      .execute();
+
+    if (users.length === 0) {
+      return null;
+    }
+
+    const user = users[0];
+
+    // Return user without password
+    return {
+      ...user,
+      password: '' // Don't return password in response
+    };
+  } catch (error) {
+    console.error('Get current user failed:', error);
+    throw error;
+  }
 }

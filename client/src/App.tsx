@@ -1,27 +1,35 @@
-import './App.css';
+
+import { useState, useCallback } from 'react';
+import { Login } from '@/components/Login';
+import { Dashboard } from '@/components/Dashboard';
+import { Header } from '@/components/Header';
+import { Footer } from '@/components/Footer';
+import type { User } from '../../server/src/schema';
 
 function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  const handleLogin = useCallback((user: User) => {
+    setCurrentUser(user);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+  }, []);
+
   return (
-    <div>
-      <div className="gradient"></div>
-      <div className="grid"></div>
-      <div className="container">
-        <h1 className="title">Under Construction</h1>
-        <p className="description">
-          Your app is under construction. It's being built right now!
-        </p>
-        <div className="dots">
-          <div className="dot"></div>
-          <div className="dot"></div>
-          <div className="dot"></div>
-        </div>
-        <footer className="footer">
-          Built with ❤️ by{" "}
-          <a href="https://app.build" target="_blank" className="footer-link">
-            app.build
-          </a>
-        </footer>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-pink-800 flex flex-col">
+      <Header />
+      
+      <main className="flex-1 container mx-auto px-4 py-6">
+        {!currentUser ? (
+          <Login onLogin={handleLogin} />
+        ) : (
+          <Dashboard user={currentUser} onLogout={handleLogout} />
+        )}
+      </main>
+      
+      <Footer />
     </div>
   );
 }
