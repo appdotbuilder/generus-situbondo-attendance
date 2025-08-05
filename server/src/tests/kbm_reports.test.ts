@@ -75,20 +75,17 @@ describe('KBM Reports Handlers', () => {
       keterangan: 'Pembelajaran berjalan lancar',
       attendances: [
         {
-          generus_id: 0, // Will be set dynamically
+          generus_name: 'Test Student 1',
           status: 'Hadir'
         },
         {
-          generus_id: 0, // Will be set dynamically
+          generus_name: 'Test Student 2',
           status: 'Sakit'
         }
       ]
     };
 
     it('should create KBM report with attendance data', async () => {
-      testInput.attendances[0].generus_id = testGenerusId1;
-      testInput.attendances[1].generus_id = testGenerusId2;
-
       const result = await createKBMReport(testInput, testUserId);
 
       expect(result.id).toBeDefined();
@@ -103,9 +100,6 @@ describe('KBM Reports Handlers', () => {
     });
 
     it('should create attendance records for each generus', async () => {
-      testInput.attendances[0].generus_id = testGenerusId1;
-      testInput.attendances[1].generus_id = testGenerusId2;
-
       const result = await createKBMReport(testInput, testUserId);
 
       const attendanceRecords = await db.select()
@@ -123,9 +117,6 @@ describe('KBM Reports Handlers', () => {
     });
 
     it('should save KBM report to database', async () => {
-      testInput.attendances[0].generus_id = testGenerusId1;
-      testInput.attendances[1].generus_id = testGenerusId2;
-
       const result = await createKBMReport(testInput, testUserId);
 
       const reports = await db.select()
@@ -141,17 +132,21 @@ describe('KBM Reports Handlers', () => {
     });
 
     it('should throw error when user does not exist', async () => {
-      testInput.attendances[0].generus_id = testGenerusId1;
-      testInput.attendances[1].generus_id = testGenerusId2;
-
       await expect(createKBMReport(testInput, 999)).rejects.toThrow(/user not found/i);
     });
 
     it('should throw error when generus does not exist', async () => {
-      testInput.attendances[0].generus_id = 999;
-      testInput.attendances[1].generus_id = testGenerusId2;
+      const invalidInput: CreateKBMReportInput = {
+        ...testInput,
+        attendances: [
+          {
+            generus_name: 'Non-existent Student',
+            status: 'Hadir'
+          }
+        ]
+      };
 
-      await expect(createKBMReport(testInput, testUserId)).rejects.toThrow(/generus with id 999 not found/i);
+      await expect(createKBMReport(invalidInput, testUserId)).rejects.toThrow(/Generus 'Non-existent Student' not found/i);
     });
   });
 

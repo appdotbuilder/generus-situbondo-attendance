@@ -7,40 +7,41 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { trpc } from '@/utils/trpc';
-import type { User, CreateKBMReportInput, KBMReport, Generus, AttendanceInput } from '../../../server/src/schema';
+import type { User, CreateKBMReportInput, KBMReport, AttendanceInput } from '../../../server/src/schema';
+
+interface ManualAttendanceEntry {
+  name: string;
+  status: AttendanceInput['status'];
+}
 
 interface KBMReportsProps {
   user: User;
 }
 
 export function KBMReports({ user }: KBMReportsProps) {
-  const [allGenerus, setAllGenerus] = useState<Generus[]>([]);
   const [myReports, setMyReports] = useState<KBMReport[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState<Omit<CreateKBMReportInput, 'attendances'>>({
     tanggal: new Date().toISOString().split('T')[0],
     hari: '',
-    nama_pengajar: user.full_name,
+    nama_pengajar: '',
     materi: '',
     keterangan: null
   });
 
-  // Attendance state - track which generus are selected and their attendance status
-  const [selectedGenerus, setSelectedGenerus] = useState<Set<number>>(new Set());
-  const [attendanceData, setAttendanceData] = useState<Map<number, AttendanceInput['status']>>(new Map());
+  // Manual attendance entries state
+  const [manualAttendanceEntries, setManualAttendanceEntries] = useState<ManualAttendanceEntry[]>([
+    { name: '', status: 'Hadir' }
+  ]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [generusResult, reportsResult] = await Promise.all([
-        trpc.getAllGenerus.query(),
-        trpc.getKBMReportsByUser.query({ userId: user.id })
-      ]);
-      
-      setAllGenerus(generusResult);
+      const reportsResult = await trpc.getKBMReportsByUser.query({ userId: user.id });
       setMyReports(reportsResult);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -65,38 +66,45 @@ export function KBMReports({ user }: KBMReportsProps) {
     }
   }, [formData.tanggal]);
 
-  const handleGenerusToggle = (generusId: number) => {
-    const newSelected = new Set(selectedGenerus);
-    const newAttendanceData = new Map(attendanceData);
-
-    if (newSelected.has(generusId)) {
-      newSelected.delete(generusId);
-      newAttendanceData.delete(generusId);
-    } else {
-      newSelected.add(generusId);
-      newAttendanceData.set(generusId, 'Hadir');
-    }
-
-    setSelectedGenerus(newSelected);
-    setAttendanceData(newAttendanceData);
+  const addManualAttendanceEntry = () => {
+    setManualAttendanceEntries((prev: ManualAttendanceEntry[]) => [
+      ...prev,
+      { name: '', status: 'Hadir' }
+    ]);
   };
 
-  const handleAttendanceChange = (generusId: number, status: AttendanceInput['status']) => {
-    const newAttendanceData = new Map(attendanceData);
-    newAttendanceData.set(generusId, status);
-    setAttendanceData(newAttendanceData);
+  const removeManualAttendanceEntry = (index: number) => {
+    setManualAttendanceEntries((prev: ManualAttendanceEntry[]) => 
+      prev.filter((_, i) => i !== index)
+    );
+  };
+
+  const updateManualAttendanceEntry = (index: number, field: keyof ManualAttendanceEntry, value: string) => {
+    setManualAttendanceEntries((prev: ManualAttendanceEntry[]) => 
+      prev.map((entry, i) => 
+        i === index ? { ...entry, [field]: value } : entry
+      )
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setSubmitError(null);
 
     try {
-      // Prepare attendance data
-      const attendances: AttendanceInput[] = Array.from(selectedGenerus).map((generusId: number) => ({
-        generus_id: generusId,
-        status: attendanceData.get(generusId) || 'Hadir'
-      }));
+      // Filter out empty names and prepare attendance data
+      const attendances: AttendanceInput[] = manualAttendanceEntries
+        .filter((entry: ManualAttendanceEntry) => entry.name.trim() !== '')
+        .map((entry: ManualAttendanceEntry) => ({
+          generus_name: entry.name.trim(),
+          status: entry.status
+        }));
+
+      if (attendances.length === 0) {
+        setSubmitError('Minimal satu nama generus harus diisi.');
+        return;
+      }
 
       const reportData: CreateKBMReportInput = {
         ...formData,
@@ -112,17 +120,21 @@ export function KBMReports({ user }: KBMReportsProps) {
       setFormData({
         tanggal: new Date().toISOString().split('T')[0],
         hari: '',
-        nama_pengajar: user.full_name,
+        nama_pengajar: '',
         materi: '',
         keterangan: null
       });
-      setSelectedGenerus(new Set());
-      setAttendanceData(new Map());
+      setManualAttendanceEntries([{ name: '', status: 'Hadir' }]);
 
       // Reload reports
       await loadData();
     } catch (error) {
       console.error('Failed to create KBM report:', error);
+      if (error instanceof Error) {
+        setSubmitError(error.message);
+      } else {
+        setSubmitError('Terjadi kesalahan saat menyimpan laporan. Silakan coba lagi.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -224,70 +236,92 @@ export function KBMReports({ user }: KBMReportsProps) {
               />
             </div>
 
-            {/* Attendance Selection */}
+            {/* Manual Attendance Entry */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-4">
-                👥 Pilih Generus dan Status Kehadiran
-              </label>
+              <div className="flex items-center justify-between mb-4">
+                <label className="block text-sm font-medium text-gray-700">
+                  👥 Input Manual Nama Generus dan Status Kehadiran
+                </label>
+                <Button
+                  type="button"
+                  onClick={addManualAttendanceEntry}
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                >
+                  ➕ Tambah Generus
+                </Button>
+              </div>
               
-              {allGenerus.length === 0 ? (
-                <Card className="bg-yellow-50 border-yellow-200">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-yellow-700">
-                      ⚠️ Belum ada data Generus. Tambahkan data Generus terlebih dahulu di tab "Data Generus".
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {allGenerus.map((generus: Generus) => (
-                    <Card key={generus.id} className={`p-3 ${selectedGenerus.has(generus.id) ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedGenerus.has(generus.id)}
-                            onChange={() => handleGenerusToggle(generus.id)}
-                            className="w-4 h-4 text-blue-600 rounded"
-                          />
-                          <div>
-                            <div className="font-medium text-gray-800">
-                              {generus.nama_lengkap}
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              {generus.kelompok_sambung} • {generus.jenjang}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {selectedGenerus.has(generus.id) && (
-                          <Select
-                            value={attendanceData.get(generus.id) || 'Hadir'}
-                            onValueChange={(value: AttendanceInput['status']) => 
-                              handleAttendanceChange(generus.id, value)
-                            }
-                          >
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Hadir">✅ Hadir</SelectItem>
-                              <SelectItem value="Sakit">🤒 Sakit</SelectItem>
-                              <SelectItem value="Izin">📝 Izin</SelectItem>
-                              <SelectItem value="Tidak Hadir/Alfa">❌ Alfa</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {manualAttendanceEntries.map((entry: ManualAttendanceEntry, index: number) => (
+                  <Card key={index} className="p-3 bg-gray-50">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <Input
+                          value={entry.name}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            updateManualAttendanceEntry(index, 'name', e.target.value)
+                          }
+                          placeholder="Masukkan nama lengkap generus..."
+                          className="w-full"
+                        />
                       </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
+                      
+                      <Select
+                        value={entry.status}
+                        onValueChange={(value: AttendanceInput['status']) => 
+                          updateManualAttendanceEntry(index, 'status', value)
+                        }
+                      >
+                        <SelectTrigger className="w-36">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Hadir">✅ Hadir</SelectItem>
+                          <SelectItem value="Sakit">🤒 Sakit</SelectItem>
+                          <SelectItem value="Izin">📝 Izin</SelectItem>
+                          <SelectItem value="Tidak Hadir/Alfa">❌ Alfa</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      
+                      {manualAttendanceEntries.length > 1 && (
+                        <Button
+                          type="button"
+                          onClick={() => removeManualAttendanceEntry(index)}
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 border-red-200 hover:bg-red-50"
+                        >
+                          🗑️
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+              
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-700">
+                  💡 <strong>Tips:</strong> Masukkan nama lengkap generus sesuai dengan yang ada di data. 
+                  Jika nama tidak ditemukan, sistem akan memberikan pesan error dan Anda perlu menambahkan data generus tersebut terlebih dahulu di tab "Data Generus".
+                </p>
+              </div>
             </div>
+
+            {submitError && (
+              <Card className="bg-red-50 border-red-200">
+                <CardContent className="p-4">
+                  <p className="text-red-700 text-sm">
+                    ❌ <strong>Error:</strong> {submitError}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             <Button 
               type="submit" 
-              disabled={isSubmitting || selectedGenerus.size === 0}
+              disabled={isSubmitting}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3"
             >
               {isSubmitting ? '📤 Menyimpan...' : '💾 Simpan Laporan KBM'}

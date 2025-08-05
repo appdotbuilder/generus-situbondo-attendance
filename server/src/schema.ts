@@ -97,7 +97,7 @@ export const attendanceSchema = z.object({
 export type Attendance = z.infer<typeof attendanceSchema>;
 
 export const attendanceInputSchema = z.object({
-  generus_id: z.number(),
+  generus_name: z.string(),
   status: attendanceStatusSchema
 });
 

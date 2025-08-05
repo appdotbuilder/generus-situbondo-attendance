@@ -16,16 +16,20 @@ export async function createKBMReport(input: CreateKBMReportInput, userId: numbe
       throw new Error('User not found');
     }
 
-    // Verify all generus IDs exist
+    // Find generus IDs by name and verify they exist
+    const generusLookup = new Map<string, number>();
+    
     for (const attendance of input.attendances) {
       const generus = await db.select()
         .from(generusTable)
-        .where(eq(generusTable.id, attendance.generus_id))
+        .where(eq(generusTable.nama_lengkap, attendance.generus_name))
         .execute();
 
       if (generus.length === 0) {
-        throw new Error(`Generus with ID ${attendance.generus_id} not found`);
+        throw new Error(`Generus '${attendance.generus_name}' not found. Please add the full generus data first in 'Data Generus' tab.`);
       }
+      
+      generusLookup.set(attendance.generus_name, generus[0].id);
     }
 
     // Create KBM report
@@ -48,7 +52,7 @@ export async function createKBMReport(input: CreateKBMReportInput, userId: numbe
       await db.insert(attendanceTable)
         .values(
           input.attendances.map(attendance => ({
-            generus_id: attendance.generus_id,
+            generus_id: generusLookup.get(attendance.generus_name)!,
             kbm_report_id: kbmReport.id,
             status: attendance.status
           }))
